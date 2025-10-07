@@ -1,0 +1,23 @@
+#
+# Copyright (c) 2025 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig BLE_HRS_C
+	bool "BLE Heart rate service central"
+	depends on SOFTDEVICE
+	select EXPERIMENTAL
+	help
+	  Heart rate service central library.
+
+if BLE_HRS_C
+
+config BLE_HRS_C_RR_INTERVALS_MAX_COUNT
+	int "Maximum number of RR intervals per HRM notification"
+	default 20
+	help
+	  Maximum number of RR intervals to be decoded for each HRM notifications
+	  (any extra RRintervals are ignored).
+
+endif # BLE_HRS_C

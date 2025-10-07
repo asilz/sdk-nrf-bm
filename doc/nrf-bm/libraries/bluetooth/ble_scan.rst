@@ -101,7 +101,7 @@ It is required when using scan filters or the whitelist.
            },
            .conn_params = BLE_SCAN_CONN_PARAMS_DEFAULT,
            .connect_if_match = true,
-           .conn_cfg_tag = APP_BLE_CONN_CFG_TAG,
+           .conn_cfg_tag = CONFIG_NRF_SDH_BLE_CONN_TAG,
            .evt_handler = scan_event_handler_func,
    };
 
