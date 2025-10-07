@@ -1,0 +1,12 @@
+#
+# Copyright (c) 2025 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig BLE_HRS_C
+	bool "BLE Heart rate service central"
+	depends on SOFTDEVICE
+	select EXPERIMENTAL
+	help
+	  Heart rate service central library.
