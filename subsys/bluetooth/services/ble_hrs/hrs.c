@@ -193,6 +193,13 @@ void ble_hrs_on_ble_evt(const ble_evt_t *ble_evt, void *hrs_instance)
 	__ASSERT(ble_evt, "BLE event is NULL");
 	__ASSERT(hrs_instance, "BLE instance is NULL");
 
+	if (ble_evt->header.evt_id >= BLE_GAP_EVT_BASE &&
+	    ble_evt->header.evt_id <= BLE_GAP_EVT_LAST &&
+	    ble_evt->evt.gap_evt.params.connected.role != BLE_GAP_ROLE_PERIPH &&
+	    ble_evt->evt.gap_evt.params.connected.role != BLE_GAP_ROLE_INVALID) {
+		return;
+	}
+
 	switch (ble_evt->header.evt_id) {
 	case BLE_GAP_EVT_CONNECTED:
 		on_connect(hrs_instance, &ble_evt->evt.gap_evt);
