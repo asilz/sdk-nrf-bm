@@ -10,7 +10,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(unit_test_ble_hrs_client)
 
-set(SOFTDEVICE_VARIANT "s115")
+set(SOFTDEVICE_VARIANT "s145")
 set(SOFTDEVICE_INCLUDE_DIR "${ZEPHYR_NRF_BM_MODULE_DIR}/components/softdevice/nrf54l/\
 ${SOFTDEVICE_VARIANT}/${SOFTDEVICE_VARIANT}_API/include")
 

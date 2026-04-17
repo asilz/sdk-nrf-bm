@@ -119,6 +119,7 @@ static void on_disconnected(struct ble_hrs_client *hrs_client, const ble_evt_t *
 		hrs_client->conn_handle = BLE_CONN_HANDLE_INVALID;
 		hrs_client->handles.hrm_cccd_handle = BLE_GATT_HANDLE_INVALID;
 		hrs_client->handles.hrm_handle = BLE_GATT_HANDLE_INVALID;
+		hrs_client->handles.bsl_handle = BLE_GATT_HANDLE_INVALID;
 	}
 }
 
@@ -128,6 +129,7 @@ void ble_hrs_on_db_disc_evt(struct ble_hrs_client *hrs_client,
 	__ASSERT(hrs_client, "HRS client instance is NULL");
 	__ASSERT(db_discovery_evt, "Discovery event is NULL");
 
+	uint32_t nrf_err;
 	const struct ble_gatt_db_char *db_char;
 	struct ble_hrs_client_evt hrs_client_evt = {
 		.evt_type = BLE_HRS_CLIENT_EVT_DISCOVERY_COMPLETE,
@@ -152,7 +154,18 @@ void ble_hrs_on_db_disc_evt(struct ble_hrs_client *hrs_client,
 				db_char->cccd_handle;
 			hrs_client_evt.discovery_complete.handles.hrm_handle =
 				db_char->characteristic.handle_value;
-			break;
+		} else if (db_char->characteristic.uuid.uuid ==
+			BLE_UUID_BODY_SENSOR_LOCATION_CHAR) {
+			hrs_client_evt.discovery_complete.handles.bsl_handle =
+				db_char->characteristic.handle_value;
+			nrf_err = sd_ble_gattc_read(db_discovery_evt->conn_handle,
+				db_char->characteristic.handle_value, 0);
+				if (nrf_err) {
+					hrs_client_evt.evt_type = BLE_HRS_CLIENT_EVT_ERROR;
+					hrs_client_evt.error.reason = nrf_err;
+					hrs_client->evt_handler(hrs_client, &hrs_client_evt);
+					return;
+				}
 		}
 	}
 
@@ -194,10 +207,41 @@ uint32_t ble_hrs_client_init(struct ble_hrs_client *hrs_client,
 	return ble_db_discovery_service_register(hrs_client_config->db_discovery, &hrs_uuid);
 }
 
+static void on_read_rsp(struct ble_hrs_client *hrs_client, const ble_evt_t *ble_evt)
+{
+	const ble_gattc_evt_read_rsp_t *read_rsp = &ble_evt->evt.gattc_evt.params.read_rsp;
+	struct ble_hrs_client_evt evt = {
+		.conn_handle = ble_evt->evt.gattc_evt.conn_handle,
+		.evt_type = BLE_HRS_CLIENT_EVT_BSL_UPDATE,
+		.body_sensor_location = ble_evt->evt.gattc_evt.params.read_rsp.data[0],
+	};
+
+	if (hrs_client->conn_handle != ble_evt->evt.gattc_evt.conn_handle) {
+		return;
+	}
+
+	/* Check if this is a body sensor location response. */
+	if (read_rsp->handle != hrs_client->handles.bsl_handle) {
+		return;
+	}
+
+	if (read_rsp->len < 1) {
+		return;
+	}
+
+	hrs_client->evt_handler(hrs_client, &evt);
+}
+
 void ble_hrs_client_on_ble_evt(const ble_evt_t *ble_evt, void *hrs_client)
 {
 	__ASSERT(ble_evt, "BLE event is NULL");
 	__ASSERT(hrs_client, "HRS central instance is NULL");
+
+	if (ble_evt->header.evt_id >= BLE_GAP_EVT_BASE &&
+	    ble_evt->header.evt_id <= BLE_GAP_EVT_LAST &&
+	    ble_evt->evt.gap_evt.params.connected.role == BLE_GAP_ROLE_PERIPH) {
+		return;
+	}
 
 	switch (ble_evt->header.evt_id) {
 	case BLE_GATTC_EVT_HVX:
@@ -205,6 +249,9 @@ void ble_hrs_client_on_ble_evt(const ble_evt_t *ble_evt, void *hrs_client)
 		break;
 	case BLE_GAP_EVT_DISCONNECTED:
 		on_disconnected(hrs_client, ble_evt);
+		break;
+	case BLE_GATTC_EVT_READ_RSP:
+		on_read_rsp(hrs_client, ble_evt);
 		break;
 	default:
 		break;
