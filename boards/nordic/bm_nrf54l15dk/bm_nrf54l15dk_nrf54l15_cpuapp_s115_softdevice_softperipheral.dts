@@ -1,0 +1,95 @@
+/*
+ * Copyright (c) 2025 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+/dts-v1/;
+
+#include <nordic/nrf54l15_cpuapp.dtsi>
+#include "bm_nrf54l15dk_nrf54l15_cpuapp_common.dtsi"
+
+/ {
+	chosen {
+		zephyr,flash = &cpuapp_rram;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,sram = &app_ram;
+	};
+};
+
+&cpuapp_rram {
+	status = "okay";
+
+	partitions {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		slot0_partition: partition@0 {
+			label = "slot0";
+			reg = <0x00000000 DT_SIZE_K(1398)>;
+		};
+
+		flpr_partition: partition@15D800 {
+			compatible = "zephyr,mapped-partition";
+			label = "flpr";
+			reg = <0x0015D800 DT_SIZE_K(16)>;
+		};
+
+		storage_partition: partition@161800 {
+			compatible = "zephyr,mapped-partition";
+			label = "storage";
+			reg = <0x00161800 DT_SIZE_K(8)>;
+			ranges = <0x0 0x161800 DT_SIZE_K(8)>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			peer_manager_partition: partition@0 {
+				compatible = "zephyr,mapped-partition";
+				label = "peer_manager";
+				reg = <0x00000000 DT_SIZE_K(4)>;
+			};
+
+			storage0_partition: partition@1000 {
+				compatible = "zephyr,mapped-partition";
+				label = "storage0";
+				reg = <0x00001000 DT_SIZE_K(4)>;
+			};
+		};
+
+		softdevice_partition: partition@163800 {
+			compatible = "zephyr,mapped-partition";
+			label = "softdevice";
+			reg = <0x00163800 DT_SIZE_K(101)>;
+		};
+	};
+};
+
+&cpuapp_sram {
+	status = "okay";
+
+	softdevice_ram: sram@0 {
+		label = "softdevice_ram";
+		reg = <0x0 0x4400>;
+	};
+
+	flpr_firmware_ram: sram@4400 {
+		label = "flpr_firmware_ram";
+		reg = <0x4400 0x3740>;
+	};
+
+	flpr_execution_ram: sram@7B40 {
+		label = "flpr_execution_ram";
+		reg = <0x7B40 0x400>;
+	};
+
+	flpr_vri_ram: sram@7F400 {
+		label = "flpr_vri_ram";
+		reg = <0x7F40 0x200>;
+	};
+
+	app_ram: sram@8140 {
+		label = "app_ram";
+		reg = <0x8140 (DT_SIZE_K(223) + 0xC0)>;
+	};
+};

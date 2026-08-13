@@ -1,0 +1,15 @@
+#
+# Copyright (c) 2025 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menu "sQSPI sample"
+
+module=SAMPLE_SQSPI
+module-str=Softperipheral SPI Sample
+source "$(ZEPHYR_BASE)/subsys/logging/Kconfig.template.log_config"
+
+endmenu # "sQSPI  sample"
+
+source "Kconfig.zephyr"

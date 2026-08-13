@@ -1,0 +1,17 @@
+#
+# Copyright (c) 2026 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+menu "Softperipheral"
+
+config SOFTPERIPHERAL
+    bool "Softperipheral is present"
+    depends on NRFX_GPIOTE
+
+
+config SQSPI
+    bool "Softperipheral QSPI"
+    depends on SOFTPERIPHERAL
+
+endmenu
