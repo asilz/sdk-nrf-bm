@@ -6,4 +6,5 @@
 
 # zephyr-keep-sorted-start
 add_subdirectory_ifdef(CONFIG_BM_ZMS bm_zms)
+add_subdirectory_ifdef(CONFIG_BM_FATFS bm_fatfs)
 # zephyr-keep-sorted-stop

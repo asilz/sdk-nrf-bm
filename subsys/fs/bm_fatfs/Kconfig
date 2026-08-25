@@ -1,0 +1,19 @@
+#
+# Copyright (c) 2026 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig BM_FATFS
+	bool "Bare Metal Zephyr Memory Storage"
+	select SQSPI
+	help
+	  Bare Metal Zephyr Memory Storage library.
+
+if BM_FATFS
+
+module=BM_FATFS
+module-str=BM_FATFS
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # BM_FATFS

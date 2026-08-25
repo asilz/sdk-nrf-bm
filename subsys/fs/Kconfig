@@ -8,6 +8,7 @@ menu "File Systems"
 
 # zephyr-keep-sorted-start
 rsource "bm_zms/Kconfig"
+rsource "bm_fatfs/Kconfig"
 # zephyr-keep-sorted-stop
 
 endmenu

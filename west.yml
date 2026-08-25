@@ -7,6 +7,8 @@ manifest:
   remotes:
     - name: ncs
       url-base: https://github.com/nrfconnect
+    - name: zephyr
+      url-base: https://github.com/zephyrproject-rtos
 
   projects:
     - name: nrf
@@ -31,6 +33,15 @@ manifest:
           - zephyr
           - cmock
           - zcbor
+    - name: sdk-nrf-bm-internal
+      path: nrf-bm-internal
+      revision: 2086b4bb5ee2cc68b824fe5ecd4e2461987e4c5c
+      groups:
+        - nrf-bm-internal
+    - name: fatfs
+      remote: zephyr
+      path: fatfs
+      revision: 42c2d6ee77e108d2a6d05e862ef0be23511db204
 
   self:
     path: nrf-bm
