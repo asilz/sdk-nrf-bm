@@ -10,10 +10,6 @@
 #include "ff.h"			/* Basic definitions of FatFs */
 #include "diskio.h"		/* Declarations FatFs MAI */
 
-/* Example: Declarations of the platform and disk functions in the project */
-#include "platform.h"
-#include "storage.h"
-
 #include <nrf_sp_qspi.h>
 #include <nrf_sqspi.h>
 #include <drivers/nrfx_errors.h>
@@ -45,6 +41,10 @@
 #define MX25_SECTOR_COUNT 2048
 #define MX25_SECTOR_SIZE 4096
 #define MX25_BLOCK_SIZE 8
+#define MX25_PAGE_SIZE 256
+
+#define MX25_WIP_BIT 1 << 0
+#define MX25_WEL_BIT 1 << 1
 
 #define MX25_CMD_HEADER(opcode, addr)								   \
 	(opcode),										   \
@@ -52,6 +52,7 @@
 	(uint8_t)((addr) >> 8),									   \
 	(uint8_t)(addr)
 
+LOG_MODULE_REGISTER(bm_fatfs, CONFIG_BM_FATFS_LOG_LEVEL);
 
 ISR_DIRECT_DECLARE(sqspi_direct_isr)
 {
@@ -61,14 +62,84 @@ ISR_DIRECT_DECLARE(sqspi_direct_isr)
 
 static nrf_sqspi_t qspi = {.p_reg = (void *)DT_REG_ADDR(DT_NODELABEL(flpr_vri_ram)), .drv_inst_idx = 0};
 
+static volatile uint8_t ready_reg = 0;
+static volatile bool xfer_done = false;
+
+static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer){
+	nrfx_err_t err;
+	xfer_done = false;
+	do {
+		err = nrf_sqspi_xfer(&qspi, xfer, 1, 0);
+	} while(err == NRFX_ERROR_BUSY);
+
+	while(!xfer_done);
+
+	if (err != NRFX_SUCCESS){
+		return err;
+	}
+
+	return NRFX_SUCCESS;
+}
+
+static nrfx_err_t mx25_wait_wip(){
+	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX,
+				.cmd = MX25_CMD_RDSR, .cmd_length = 8,
+				.addr_length = 0, .dummy_length = 0,
+				.p_data = &ready_reg, .data_length = sizeof(ready_reg)};
+
+	nrfx_err_t err;
+	do {
+		err = sqspi_xfer_blocking(&xfer);
+
+		if (err != NRFX_SUCCESS){
+			return err;
+		}
+	} while((ready_reg & MX25_WIP_BIT) != 0);
+	return NRFX_SUCCESS;
+}
+
+static nrfx_err_t mx25_wait_wel(){
+	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX,
+				.cmd = MX25_CMD_RDSR, .cmd_length = 8,
+				.addr_length = 0, .dummy_length = 0,
+				.p_data = &ready_reg, .data_length = sizeof(ready_reg)};
+
+	nrfx_err_t err;
+	do {
+		err = sqspi_xfer_blocking(&xfer);
+
+		if (err != NRFX_SUCCESS){
+			return err;
+		}
+	} while(!(ready_reg & MX25_WEL_BIT));
+	return NRFX_SUCCESS;
+}
+
+static nrfx_err_t mx25_write_enable(){
+	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TX,
+					.cmd = MX25_CMD_WREN, .cmd_length = 8,
+					.addr_length = 0, .dummy_length = 0, .data_length = 0};
+	nrfx_err_t err;
+
+	err = sqspi_xfer_blocking(&xfer);
+
+	if (err != NRFX_SUCCESS){
+		return err;
+	}
+	err = mx25_wait_wel();
+	return err;
+}
+
 static void cb(nrf_sqspi_t const *p_qspi, nrf_sqspi_evt_t *p_event, void *p_context)
 {
 	if(p_event->type == NRF_SQSPI_EVT_XFER_DONE){
 	        if(p_event->data.xfer_done != NRF_SQSPI_RESULT_OK){
 	            LOG_ERR("xfer done error, err = %d", p_event->data.xfer_done);
 	        }
+		xfer_done = true;
 	}
 }
+
 
 /*-----------------------------------------------------------------------*/
 /* Get Drive Status                                                      */
@@ -106,89 +177,92 @@ DSTATUS disk_initialize (
 	if (pdrv != MX25_FLASH){
 		return RES_PARERR;
 	}
+	if (nrf_sqspi_init_check(&qspi)){
+        return 0;
+    }
 
-    	M_IRQ_DIRECT_CONNECT(SP_VPR_IRQn, 4, sqspi_direct_isr, 0);
-
-    	nrf_sqspi_cfg_t cfg = {
-        	.skip_gpio_cfg = false,
-        	.skip_pmux_cfg = false,
-        	.pins = {
-        	    .sck = NRF_PIN_PORT_TO_PIN_NUMBER(1, 2),
-        	    .strobe = NRF_SQSPI_PINS_UNUSED,
-        	    .io = {
-        	        NRF_PIN_PORT_TO_PIN_NUMBER(2, 2),
-        	        NRF_PIN_PORT_TO_PIN_NUMBER(4, 2),
-        	        NRF_PIN_PORT_TO_PIN_NUMBER(3, 2),
-        	        NRF_PIN_PORT_TO_PIN_NUMBER(0, 2),
-        	    }
-        	}
-    	};
-
-    	nrf_spu_periph_perm_secattr_set(NRF_SPU00, nrf_address_slave_get((uint32_t)NRF_MEMCONF), true);
-
-    	nrf_sqspi_dev_cfg_t qspi_dev_config = {.csn_pin = NRF_PIN_PORT_TO_PIN_NUMBER(5, 2),
-    	    					.sck_freq_khz = 1000,
-						.spi_cpolpha = NRF_SQSPI_SPI_CPOLPHA_0,
-						.mspi_lines = NRF_SQSPI_SPI_LINES_QUAD_1_1_4,
-						.mspi_ddr = NRF_SQSPI_SPI_DDR_SINGLE,
-						.spi_clk_stretch = false};
-    	NRF_SPU00_S->PERIPH[0xC].PERM = (SPU_PERIPH_PERM_SECATTR_Secure << SPU_PERIPH_PERM_SECATTR_Pos);
-
-    	err = nrf_sqspi_init(&qspi, &cfg);
-    	if (err != NRFX_SUCCESS){
-    	    return err;
-    	}
-
-    	nrf_sqspi_data_fmt_t sqspi_data_fmt = {
-			.cmd_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
-			.addr_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
-			.data_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
-			.data_bit_reorder_unit = 8,
-			.data_container = 32,
-			.data_swap_unit = 8,
-			.data_padding = NRF_SQSPI_DATA_FMT_PAD_RAW,
-		};
-    	err = nrf_sqspi_dev_data_fmt_set(&qspi, &sqspi_data_fmt);
-    	if (err != NRFX_SUCCESS) {
-			LOG_ERR("nrf_sqspi_dev_data_fmt_set() failed: %08x", err);
-		}
-
-    	if (!nrf_sqspi_init_check(&qspi)){
-    	    LOG_WRN("sqspi not inited");
-    	}
-
-
-    	err = nrf_sqspi_dev_cfg(&qspi, &qspi_dev_config, cb, NULL);
-    	if(err != NRFX_SUCCESS){
-    	    LOG_ERR("nrf_sqspi_dev_cfg failed, err = %d", err);
-    	}
-
-    	if (cfg.skip_gpio_cfg == false) { //This overrides the driver's default configuration
-    	    // Set drive strength E0E1, as it is non-standard.
-    	    nrf_gpio_cfg(qspi_dev_config.csn_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL,
-    	                 NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
-    	    nrf_gpio_cfg(cfg.pins.sck, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL,
-    	                 NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
-    	    for (int i = 0; i < 4; i++) {
-    	        nrf_gpio_cfg(cfg.pins.io[i], NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_CONNECT,
-    	                     NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
+    static const nrf_sqspi_cfg_t cfg = {
+    	.skip_gpio_cfg = false,
+    	.skip_pmux_cfg = false,
+    	.pins = {
+    	    .sck = NRF_PIN_PORT_TO_PIN_NUMBER(1, 2),
+    	    .strobe = NRF_SQSPI_PINS_UNUSED,
+    	    .io = {
+    	        NRF_PIN_PORT_TO_PIN_NUMBER(2, 2),
+    	        NRF_PIN_PORT_TO_PIN_NUMBER(4, 2),
+    	        NRF_PIN_PORT_TO_PIN_NUMBER(3, 2),
+    	        NRF_PIN_PORT_TO_PIN_NUMBER(0, 2),
     	    }
     	}
-    	if (cfg.skip_pmux_cfg == false) { //This overrides the driver's default configuration
-    	    // Set pin source as FLPR.
-    	    nrf_gpio_pin_control_select(cfg.pins.sck, NRF_GPIO_PIN_SEL_VPR);
-    	    nrf_gpio_pin_control_select(qspi_dev_config.csn_pin, NRF_GPIO_PIN_SEL_VPR);
-    	    for (int i = 0; i < NRF_SQSPI_MAX_NUM_DATA_LINES; i++) {
-    	        nrf_gpio_pin_control_select(cfg.pins.io[i], NRF_GPIO_PIN_SEL_VPR);
-    	    }
-    	}
+    };
 
-    	err = nrf_sqspi_activate(&qspi);
-    	if(err != NRFX_SUCCESS){
-    	    LOG_ERR("nrf_sqspi_activate failed, err = %d", err);
-    	}
+    nrf_spu_periph_perm_secattr_set(NRF_SPU00, nrf_address_slave_get((uint32_t)NRF_MEMCONF), true);
 
-		return ret;
+    static const nrf_sqspi_dev_cfg_t qspi_dev_config = {
+					.csn_pin = NRF_PIN_PORT_TO_PIN_NUMBER(5, 2),
+        			.sck_freq_khz = 1000,
+					.spi_cpolpha = NRF_SQSPI_SPI_CPOLPHA_0,
+					.mspi_lines = NRF_SQSPI_SPI_LINES_SINGLE,
+					.mspi_ddr = NRF_SQSPI_SPI_DDR_SINGLE,
+					.spi_clk_stretch = false};
+    NRF_SPU00_S->PERIPH[0xC].PERM = (SPU_PERIPH_PERM_SECATTR_Secure << SPU_PERIPH_PERM_SECATTR_Pos);
+
+    err = nrf_sqspi_init(&qspi, &cfg);
+    if (err != NRFX_SUCCESS){
+        return err;
+    }
+
+    nrf_sqspi_data_fmt_t sqspi_data_fmt = {
+		.cmd_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
+		.addr_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
+		.data_bit_order = NRF_SQSPI_DATA_FMT_BIT_ORDER_MSB_FIRST,
+		.data_bit_reorder_unit = 8,
+		.data_container = 32,
+		.data_swap_unit = 8,
+		.data_padding = NRF_SQSPI_DATA_FMT_PAD_RAW,
+	};
+
+    err = nrf_sqspi_dev_data_fmt_set(&qspi, &sqspi_data_fmt);
+    if (err != NRFX_SUCCESS) {
+		LOG_ERR("nrf_sqspi_dev_data_fmt_set() failed: %d", err);
+	}
+    if (!nrf_sqspi_init_check(&qspi)){
+        LOG_WRN("sqspi not inited");
+    }
+
+    err = nrf_sqspi_dev_cfg(&qspi, &qspi_dev_config, cb, NULL);
+    if(err != NRFX_SUCCESS){
+        LOG_ERR("nrf_sqspi_dev_cfg failed, err = %d", err);
+    }
+
+    if (cfg.skip_gpio_cfg == false) { //This overrides the driver's default configuration
+        // Set drive strength E0E1, as it is non-standard.
+        nrf_gpio_cfg(qspi_dev_config.csn_pin, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL,
+                     NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
+        nrf_gpio_cfg(cfg.pins.sck, NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL,
+                     NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
+        for (int i = 0; i < 4; i++) {
+            nrf_gpio_cfg(cfg.pins.io[i], NRF_GPIO_PIN_DIR_OUTPUT, NRF_GPIO_PIN_INPUT_CONNECT,
+                         NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
+        }
+    }
+    if (cfg.skip_pmux_cfg == false) { //This overrides the driver's default configuration
+        // Set pin source as FLPR.
+        nrf_gpio_pin_control_select(cfg.pins.sck, NRF_GPIO_PIN_SEL_VPR);
+        nrf_gpio_pin_control_select(qspi_dev_config.csn_pin, NRF_GPIO_PIN_SEL_VPR);
+        for (int i = 0; i < NRF_SQSPI_MAX_NUM_DATA_LINES; i++) {
+            nrf_gpio_pin_control_select(cfg.pins.io[i], NRF_GPIO_PIN_SEL_VPR);
+        }
+    }
+
+    err = nrf_sqspi_activate(&qspi);
+    if(err != NRFX_SUCCESS){
+        LOG_ERR("nrf_sqspi_activate failed, err = %d", err);
+    }
+
+	BM_IRQ_DIRECT_CONNECT(SP_VPR_IRQn, 7, sqspi_direct_isr, 0);
+
+	return ret;
 }
 
 
@@ -208,15 +282,19 @@ DRESULT disk_read (
 		return RES_PARERR;
 	}
 
-	static const nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX, .cmd = MX25_CMD_READ, .address = MX25_SECTOR_SIZE * sector, .p_data = buff, .data_length = MX25_SECTOR_SIZE * count, .cmd_length = 8, .addr_length = 24, .dummy_length = 0};
+	for(size_t i = 0; i < count; ++i){
+		nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX, .cmd = MX25_CMD_READ,
+			.address = MX25_SECTOR_SIZE * (sector + i), .p_data = buff + MX25_SECTOR_SIZE * i,
+			.data_length = MX25_SECTOR_SIZE, .cmd_length = 8,
+			.addr_length = 24, .dummy_length = 0};
 
-	nrfx_err_t err = nrf_sqspi_xfer(&qspi, &xfer, 1, 0);
+		nrfx_err_t err = sqspi_xfer_blocking(&xfer);
     	if(err != NRFX_SUCCESS){
     	    return RES_NOTRDY;
     	}
+	}
 
-
-	return RET_OK;
+	return RES_OK;
 }
 
 
@@ -234,31 +312,42 @@ DRESULT disk_write (
 	UINT count		/* Number of sectors to write */
 )
 {
-	if (pdrv != MX25_FLASH){
-		return RES_PARERR;
-	}
+	if (pdrv != MX25_FLASH) return RES_PARERR;
+	nrfx_err_t err;
 	for (UINT i = 0; i < count; i++){
+		err = mx25_wait_wip();
+		if(err != NRFX_SUCCESS) return RES_NOTRDY;
+
+		err = mx25_write_enable();
+		if(err != NRFX_SUCCESS) return RES_NOTRDY;
+
 		uint32_t sector_addr = (sector + i) * MX25_SECTOR_SIZE;
 		nrf_sqspi_xfer_t erase = {.dir = NRF_SQSPI_XFER_DIR_TX,
 					.cmd = MX25_CMD_SECTOR_ERASE, .cmd_length = 8,
 					.address = sector_addr, .addr_length = 24};
-		nrfx_err_t err = nrf_sqspi_xfer(&qspi, &erase, 1, 0);
 
-		if(err != NRFX_SUCCESS){
-        		return RES_NOTRDY;
-    		}
-		nrf_sqspi_xfer_t write = {.dir = NRF_SQSPI_XFER_DIR_TX,
-					.cmd = MX25_CMD_PAGE_PROGRAM, .cmd_length = 8,
-					.address = sector_addr, .addr_length = 24,
-					.p_data = buff, .data_length = sector * count};
+		err = sqspi_xfer_blocking(&erase);
+		if(err != NRFX_SUCCESS) return RES_NOTRDY;
 
-		err = nrf_sqspi_xfer(&qspi, &write, 1, 0);
-		if(err != NRFX_SUCCESS){
-        		return RES_NOTRDY;
-    		}
+		for(int page = 0; page < MX25_SECTOR_SIZE/MX25_PAGE_SIZE; page++){
+			err = mx25_wait_wip();
+			if(err != NRFX_SUCCESS) return RES_NOTRDY;
 
+			err = mx25_write_enable();
+			if(err != NRFX_SUCCESS) return RES_NOTRDY;
+			nrf_sqspi_xfer_t write = {.dir = NRF_SQSPI_XFER_DIR_TX,
+						.cmd = MX25_CMD_PAGE_PROGRAM, .cmd_length = 8,
+						.address = sector_addr, .addr_length = 24,
+						.p_data = (buff + page * MX25_PAGE_SIZE + i * MX25_SECTOR_SIZE),
+						.data_length = MX25_PAGE_SIZE};
+
+			err = sqspi_xfer_blocking(&write);
+			if(err != NRFX_SUCCESS) return RES_NOTRDY;
+		}
 	}
-	return RET_OK;
+	err = mx25_wait_wip();
+	if(err != NRFX_SUCCESS) return RES_NOTRDY;
+	return RES_OK;
 }
 
 #endif
@@ -295,5 +384,11 @@ DRESULT disk_ioctl (
 		break;
 	}
 
-	return RET_OK;
+	return RES_OK;
+}
+
+static DWORD time = 0;
+DWORD get_fattime (void){
+
+	return time++;
 }

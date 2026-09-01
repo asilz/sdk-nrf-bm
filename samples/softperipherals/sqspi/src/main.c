@@ -15,22 +15,15 @@
 #include <softperipheral_meta.h>
 #include <softperipheral_regif.h>
 #include <hal/nrf_oscillators.h>
-
-
-
-#define FLASH_ADDRESS 0x0U
+#include <ff.h>
 
 LOG_MODULE_REGISTER(sqspi, CONFIG_SAMPLE_SQSPI_LOG_LEVEL);
 
-ISR_DIRECT_DECLARE(sqspi_direct_isr)
-{
-	nrf_sqspi_irq_handler();
-	return 0;
-}
-
 static nrf_sqspi_t qspi = {.p_reg = (void *)DT_REG_ADDR(DT_NODELABEL(flpr_vri_ram)), .drv_inst_idx = 0};
 static uint32_t magic = 0xCAFEBABE;
-static const nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TX, .cmd = 0, .address = 0xBEEFF00D, .p_data = &magic, .data_length = sizeof(magic), .cmd_length = 0, .addr_length = 32, .dummy_length = 0};
+static const nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TX,
+    .cmd = 0, .address = 0xBEEFF00D, .p_data = &magic,
+    .data_length = sizeof(magic), .cmd_length = 0, .addr_length = 32, .dummy_length = 0};
 
 static void cb(nrf_sqspi_t const *p_qspi, nrf_sqspi_evt_t *p_event, void *p_context)
 {
@@ -47,9 +40,46 @@ static void cb(nrf_sqspi_t const *p_qspi, nrf_sqspi_evt_t *p_event, void *p_cont
     }
 }
 
+static FATFS FatFs;   /* Work area (filesystem object) for logical drive */
+static FIL file;
+
 int main(void) {
 
+
     LOG_INF("sQSPI Sample started.");
+
+
+    FRESULT err;
+    BYTE work[FF_MAX_SS];
+
+    err = f_mkfs("", NULL, work, sizeof(work));
+    if(err != FR_OK){
+        LOG_ERR("Failed to create FAT volume on logical drive, err = %d", err);
+    }
+
+    err = f_mount(&FatFs, "", 0);
+    if(err != FR_OK){
+        LOG_ERR("Failed to mount drive, err = %d", err);
+    }
+
+    err = f_open(&file, "main.txt", FA_CREATE_NEW | FA_WRITE | FA_READ);
+    if(err != FR_OK){
+        LOG_ERR("Failed to open file, err = %d", err);
+    }
+
+    UINT byte_count;
+    err = f_write(&file, &magic, sizeof(magic), &byte_count);
+    if(err != FR_OK){
+        LOG_ERR("Failed to write to file, err = %d", err);
+    }
+
+    uint32_t read_buf;
+    err = f_read(&file, &read_buf, sizeof(read_buf), &byte_count);
+    if(err != FR_OK){
+        LOG_ERR("Failed to read from file, err = %d", err);
+    }
+
+    LOG_INF("Read Value %x", read_buf);
     while(1){
         log_flush();
     }
