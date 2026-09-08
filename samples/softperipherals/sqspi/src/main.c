@@ -73,13 +73,18 @@ int main(void) {
         LOG_ERR("Failed to write to file, err = %d", err);
     }
 
+    err = f_lseek(&file, 0);
+    if(err != FR_OK){
+        LOG_ERR("Failed to seek to start of file, err = %d", err);
+    }
+
     uint32_t read_buf;
     err = f_read(&file, &read_buf, sizeof(read_buf), &byte_count);
     if(err != FR_OK){
         LOG_ERR("Failed to read from file, err = %d", err);
     }
 
-    LOG_INF("Read Value %x", read_buf);
+    LOG_INF("Read Value 0x%X", read_buf);
     while(1){
         log_flush();
     }

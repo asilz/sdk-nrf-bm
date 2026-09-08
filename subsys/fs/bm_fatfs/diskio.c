@@ -65,11 +65,11 @@ static nrf_sqspi_t qspi = {.p_reg = (void *)DT_REG_ADDR(DT_NODELABEL(flpr_vri_ra
 static volatile uint8_t ready_reg = 0;
 static volatile bool xfer_done = false;
 
-static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer){
+static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer, size_t xfer_count){
 	nrfx_err_t err;
 	xfer_done = false;
 	do {
-		err = nrf_sqspi_xfer(&qspi, xfer, 1, 0);
+		err = nrf_sqspi_xfer(&qspi, xfer, xfer_count, 0);
 	} while(err == NRFX_ERROR_BUSY);
 
 	while(!xfer_done);
@@ -82,14 +82,15 @@ static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer){
 }
 
 static nrfx_err_t mx25_wait_wip(){
-	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX,
+	nrf_sqspi_xfer_t xfer =
+				{.dir = NRF_SQSPI_XFER_DIR_RX,
 				.cmd = MX25_CMD_RDSR, .cmd_length = 8,
 				.addr_length = 0, .dummy_length = 0,
 				.p_data = &ready_reg, .data_length = sizeof(ready_reg)};
 
 	nrfx_err_t err;
 	do {
-		err = sqspi_xfer_blocking(&xfer);
+		err = sqspi_xfer_blocking(&xfer, 1);
 
 		if (err != NRFX_SUCCESS){
 			return err;
@@ -99,14 +100,14 @@ static nrfx_err_t mx25_wait_wip(){
 }
 
 static nrfx_err_t mx25_wait_wel(){
-	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX,
+	nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_RX,
 				.cmd = MX25_CMD_RDSR, .cmd_length = 8,
 				.addr_length = 0, .dummy_length = 0,
 				.p_data = &ready_reg, .data_length = sizeof(ready_reg)};
 
 	nrfx_err_t err;
 	do {
-		err = sqspi_xfer_blocking(&xfer);
+		err = sqspi_xfer_blocking(&xfer, 1);
 
 		if (err != NRFX_SUCCESS){
 			return err;
@@ -121,7 +122,7 @@ static nrfx_err_t mx25_write_enable(){
 					.addr_length = 0, .dummy_length = 0, .data_length = 0};
 	nrfx_err_t err;
 
-	err = sqspi_xfer_blocking(&xfer);
+	err = sqspi_xfer_blocking(&xfer, 1);
 
 	if (err != NRFX_SUCCESS){
 		return err;
@@ -187,12 +188,8 @@ DSTATUS disk_initialize (
     	.pins = {
     	    .sck = NRF_PIN_PORT_TO_PIN_NUMBER(1, 2),
     	    .strobe = NRF_SQSPI_PINS_UNUSED,
-    	    .io = {
-    	        NRF_PIN_PORT_TO_PIN_NUMBER(2, 2),
-    	        NRF_PIN_PORT_TO_PIN_NUMBER(4, 2),
-    	        NRF_PIN_PORT_TO_PIN_NUMBER(3, 2),
-    	        NRF_PIN_PORT_TO_PIN_NUMBER(0, 2),
-    	    }
+    	    .mosi = NRF_PIN_PORT_TO_PIN_NUMBER(2, 2),
+			.miso = NRF_PIN_PORT_TO_PIN_NUMBER(4, 2)
     	}
     };
 
@@ -283,12 +280,13 @@ DRESULT disk_read (
 	}
 
 	for(size_t i = 0; i < count; ++i){
-		nrf_sqspi_xfer_t xfer = {.dir = NRF_SQSPI_XFER_DIR_TXRX, .cmd = MX25_CMD_READ,
+		nrf_sqspi_xfer_t xfer =
+			{.dir = NRF_SQSPI_XFER_DIR_RX, .cmd = MX25_CMD_READ,
 			.address = MX25_SECTOR_SIZE * (sector + i), .p_data = buff + MX25_SECTOR_SIZE * i,
 			.data_length = MX25_SECTOR_SIZE, .cmd_length = 8,
 			.addr_length = 24, .dummy_length = 0};
 
-		nrfx_err_t err = sqspi_xfer_blocking(&xfer);
+		nrfx_err_t err = sqspi_xfer_blocking(&xfer, 1);
     	if(err != NRFX_SUCCESS){
     	    return RES_NOTRDY;
     	}
@@ -326,7 +324,7 @@ DRESULT disk_write (
 					.cmd = MX25_CMD_SECTOR_ERASE, .cmd_length = 8,
 					.address = sector_addr, .addr_length = 24};
 
-		err = sqspi_xfer_blocking(&erase);
+		err = sqspi_xfer_blocking(&erase, 1);
 		if(err != NRFX_SUCCESS) return RES_NOTRDY;
 
 		for(int page = 0; page < MX25_SECTOR_SIZE/MX25_PAGE_SIZE; page++){
@@ -337,11 +335,11 @@ DRESULT disk_write (
 			if(err != NRFX_SUCCESS) return RES_NOTRDY;
 			nrf_sqspi_xfer_t write = {.dir = NRF_SQSPI_XFER_DIR_TX,
 						.cmd = MX25_CMD_PAGE_PROGRAM, .cmd_length = 8,
-						.address = sector_addr, .addr_length = 24,
+						.address = sector_addr + page * MX25_PAGE_SIZE, .addr_length = 24,
 						.p_data = (buff + page * MX25_PAGE_SIZE + i * MX25_SECTOR_SIZE),
 						.data_length = MX25_PAGE_SIZE};
 
-			err = sqspi_xfer_blocking(&write);
+			err = sqspi_xfer_blocking(&write, 1);
 			if(err != NRFX_SUCCESS) return RES_NOTRDY;
 		}
 	}
