@@ -6,13 +6,13 @@
 
 menuconfig BM_FATFS
 	bool "Bare Metal Zephyr Memory Storage"
-	select SQSPI
+	select BM_SQSPI
 	help
 	  Bare Metal Zephyr Memory Storage library.
 
 if BM_FATFS
 
-config FS_FATFS_WINDOW_ALIGNMENT
+config BM_FATFS_WINDOW_ALIGNMENT
 	int "Memory alignment for the member \"win\" in FATFS"
 	default 1
 	help
@@ -24,6 +24,16 @@ config FS_FATFS_WINDOW_ALIGNMENT
 	  buffer is internal element of FATFS structure, which means
 	  that, in worst scenario, value provided here may cause FATFS
 	  structure to have size of twice the value.
+
+config BM_FATFS_IRQ_PRIO
+	int "FATFS IRQ priority"
+	range 2 7
+	default 2
+	help
+	  Sets the interrupt priority of the GPIOTE peripherals used by the library.
+	  Levels are from 2 (highest priority) to 7 (lowest priority).
+	  Interrupt priority level must be greater than 4 (softdevice low priority)
+	  if you want to call into softdevice from the gpiote driver.
 
 module=BM_FATFS
 module-str=BM_FATFS

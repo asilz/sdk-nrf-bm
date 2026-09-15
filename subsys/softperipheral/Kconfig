@@ -5,13 +5,13 @@
 #
 menu "Softperipheral"
 
-config SOFTPERIPHERAL
+config BM_SOFTPERIPHERAL
     bool "Softperipheral is present"
     depends on NRFX_GPIOTE
 
 
-config SQSPI
+config BM_SQSPI
     bool "Softperipheral QSPI"
-    depends on SOFTPERIPHERAL
+    depends on BM_SOFTPERIPHERAL
 
 endmenu

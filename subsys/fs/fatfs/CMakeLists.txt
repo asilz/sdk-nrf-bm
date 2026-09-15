@@ -13,4 +13,4 @@ zephyr_include_directories_ifdef(CONFIG_BM_FATFS
   "${ZEPHYR_NRFXLIB_MODULE_DIR}/../fatfs/include"
 )
 
-zephyr_compile_definitions(FS_FATFS_WINDOW_ALIGNMENT=CONFIG_FS_FATFS_WINDOW_ALIGNMENT)
+zephyr_compile_definitions(FS_FATFS_WINDOW_ALIGNMENT=CONFIG_BM_FATFS_WINDOW_ALIGNMENT)
