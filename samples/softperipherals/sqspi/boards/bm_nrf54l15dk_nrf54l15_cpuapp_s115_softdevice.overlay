@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2026 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+/delete-node/ &app_ram;
+
+&cpuapp_sram {
+
+	flpr_firmware_ram: sram@4380 {
+		label = "flpr_firmware_ram";
+		reg = <0x4380 0x3740>;
+	};
+
+	flpr_execution_ram: sram@7AC0 {
+		label = "flpr_execution_ram";
+		reg = <0x7AC0 0x400>;
+	};
+
+	flpr_vri_ram: sram@7EC0 {
+		label = "flpr_vri_ram";
+		reg = <0x7EC0 0x200>;
+	};
+
+	app_ram: sram@80C0 {
+		label = "app_ram";
+		reg = <0x80C0 (DT_SIZE_K(223) + 0x140)>;
+	};
+};

@@ -14,7 +14,6 @@ zephyr_include_directories_ifdef(CONFIG_BM_SQSPI
 zephyr_compile_definitions_ifdef(CONFIG_BM_SQSPI
   NRF_SQSPI_ENABLED=1
   NRF_SQSPI_MAX_NUM_DATA_LINES=4
-  SP_VPR_FIRMWARE_ADDRESS=0x4400
 )
 
 zephyr_sources_ifdef(CONFIG_BM_SQSPI
