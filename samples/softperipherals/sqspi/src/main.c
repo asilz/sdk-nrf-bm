@@ -71,7 +71,7 @@ static nrf_sqspi_t qspi = {
 	.drv_inst_idx = 0
 };
 static volatile uint8_t ready_reg = 0;
-static atomic_t xfer_done = ATOMIC_INIT(false);
+volatile bool xfer_done;
 
 ISR_DIRECT_DECLARE(sqspi_direct_isr)
 {
@@ -85,7 +85,7 @@ static void xfer_done_cb(nrf_sqspi_t const *p_qspi, nrf_sqspi_evt_t *p_event, vo
 	        if(p_event->data.xfer_done != NRF_SQSPI_RESULT_OK){
 	            LOG_ERR("xfer done error, err = %d", p_event->data.xfer_done);
 	        }
-		atomic_set(&xfer_done, true);
+		xfer_done = true;
 	}
 }
 
@@ -219,12 +219,12 @@ static void reconfigure_single_spi(void){
 static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer, size_t xfer_count){
 	nrfx_err_t err;
 
-	atomic_set(&xfer_done, false);
+	xfer_done = false;
 	do {
 		err = nrf_sqspi_xfer(&qspi, xfer, xfer_count, 0);
 	} while(err == NRFX_ERROR_BUSY);
 
-	while(!atomic_get(&xfer_done));
+	while(!xfer_done);
 
 	if (err != NRFX_SUCCESS){
 		return err;
@@ -233,7 +233,7 @@ static nrfx_err_t sqspi_xfer_blocking(const nrf_sqspi_xfer_t* xfer, size_t xfer_
 	return NRFX_SUCCESS;
 }
 
-static nrfx_err_t mx25_wait_wip(){
+static nrfx_err_t mx25_wait_wip(void){
 	nrf_sqspi_xfer_t xfer = {
 		.dir = NRF_SQSPI_XFER_DIR_RX,
 		.cmd = MX25_CMD_RDSR, .cmd_length = 8,
@@ -252,7 +252,7 @@ static nrfx_err_t mx25_wait_wip(){
 	return NRFX_SUCCESS;
 }
 
-static nrfx_err_t mx25_wait_wel(){
+static nrfx_err_t mx25_wait_wel(void){
 	nrf_sqspi_xfer_t xfer = {
 		.dir = NRF_SQSPI_XFER_DIR_RX,
 		.cmd = MX25_CMD_RDSR,
@@ -274,7 +274,7 @@ static nrfx_err_t mx25_wait_wel(){
 	return NRFX_SUCCESS;
 }
 
-static nrfx_err_t mx25_write_enable(){
+static nrfx_err_t mx25_write_enable(void){
 	nrf_sqspi_xfer_t xfer = {
 		.dir = NRF_SQSPI_XFER_DIR_TX,
 		.cmd = MX25_CMD_WREN,
@@ -491,8 +491,6 @@ static nrfx_err_t flash_program(void)
 {
 	nrfx_err_t err;
 
-	flash_erase();
-
 	err = mx25_wait_wip();
 	if(err != NRFX_SUCCESS) return err;
 	err = mx25_write_enable();
@@ -602,7 +600,7 @@ int main(void)
 	nrf_gpio_cfg_output(BOARD_PIN_LED_0);
 	nrf_gpio_pin_write(BOARD_PIN_LED_0, !BOARD_LED_ACTIVE_STATE);
 
-	LOG_INF("SPI manager sample initialized");
+	LOG_INF("sQSPI sample initialized");
 	LOG_INF("Use following buttons to interact with external memory through SPI");
 	LOG_INF("Button 1: Erase");
 	LOG_INF("Button 2: Read");
