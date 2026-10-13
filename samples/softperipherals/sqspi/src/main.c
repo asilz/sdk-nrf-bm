@@ -94,7 +94,7 @@ static void reconfigure_quad_spi(void){
 
 	static const nrf_sqspi_dev_cfg_t qspi_dev_quad_config = {
 		.csn_pin = BOARD_EXTERNAL_MEMORY_SPIM_PIN_CSN,
-        	.sck_freq_khz = 1000,
+        	.sck_freq_khz = 10,
 		.spi_cpolpha = NRF_SQSPI_SPI_CPOLPHA_0,
 		.mspi_lines = NRF_SQSPI_SPI_LINES_QUAD_1_4_4,
 		.mspi_ddr = NRF_SQSPI_SPI_DDR_SINGLE,
@@ -129,10 +129,15 @@ static void reconfigure_quad_spi(void){
         	nrf_gpio_cfg(cfg_quad.pins.sck, NRF_GPIO_PIN_DIR_OUTPUT,
 			     NRF_GPIO_PIN_INPUT_DISCONNECT, NRF_GPIO_PIN_NOPULL,
         	             NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
-        	for (int i = 0; i < 4; i++) {
+        	for (int i = 1; i < 4; i++) {
         	    nrf_gpio_cfg(cfg_quad.pins.io[i], NRF_GPIO_PIN_DIR_OUTPUT,
 			 	 NRF_GPIO_PIN_INPUT_CONNECT,
-        	                 NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_E0E1, NRF_GPIO_PIN_NOSENSE);
+        	                 NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_H0S1, NRF_GPIO_PIN_NOSENSE);
+        	}
+			for (int i = 0; i < 1; i++) {
+        	    nrf_gpio_cfg(cfg_quad.pins.io[i], NRF_GPIO_PIN_DIR_OUTPUT,
+			 	 NRF_GPIO_PIN_INPUT_CONNECT,
+        	                 NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_H0S1, NRF_GPIO_PIN_NOSENSE);
         	}
     	}
     	if (cfg_quad.skip_pmux_cfg == false) { //This overrides the driver's default configuration
@@ -175,7 +180,7 @@ static void reconfigure_single_spi(void){
     	};
 	static const nrf_sqspi_dev_cfg_t qspi_dev_single_config = {
 		.csn_pin = BOARD_EXTERNAL_MEMORY_SPIM_PIN_CSN,
-        	.sck_freq_khz = 1000,
+        	.sck_freq_khz = 10,
 		.spi_cpolpha = NRF_SQSPI_SPI_CPOLPHA_0,
 		.mspi_lines = NRF_SQSPI_SPI_LINES_SINGLE,
 		.mspi_ddr = NRF_SQSPI_SPI_DDR_SINGLE,
@@ -309,7 +314,7 @@ static nrfx_err_t external_memory_init(void)
     	};
 	static const nrf_sqspi_dev_cfg_t qspi_dev_single_config = {
 		.csn_pin = BOARD_EXTERNAL_MEMORY_SPIM_PIN_CSN,
-        	.sck_freq_khz = 1000,
+        	.sck_freq_khz = 10,
 		.spi_cpolpha = NRF_SQSPI_SPI_CPOLPHA_0,
 		.mspi_lines = NRF_SQSPI_SPI_LINES_SINGLE,
 		.mspi_ddr = NRF_SQSPI_SPI_DDR_SINGLE,
@@ -384,6 +389,8 @@ static nrfx_err_t external_memory_init(void)
 
 	BM_IRQ_DIRECT_CONNECT(SP_VPR_IRQn, 2, sqspi_direct_isr, 0);
 
+	mx25_write_enable();
+
 	uint8_t quad_enable[3] = {0};
 	nrf_sqspi_xfer_t xfer_rdsr = {
 		.dir = NRF_SQSPI_XFER_DIR_RX,
@@ -414,7 +421,9 @@ static nrfx_err_t external_memory_init(void)
     		return err;
     	}
 
-	quad_enable[0] |= 1 << 6;
+	quad_enable[2] = 0;
+	quad_enable[1] = 0;
+	quad_enable[0] = 1 << 6;
 
 	nrf_sqspi_xfer_t xfer_wrsr = {
 		.dir = NRF_SQSPI_XFER_DIR_TX,
@@ -600,7 +609,7 @@ int main(void)
 	nrf_gpio_cfg_output(BOARD_PIN_LED_0);
 	nrf_gpio_pin_write(BOARD_PIN_LED_0, !BOARD_LED_ACTIVE_STATE);
 
-	LOG_INF("sQSPI sample initialized");
+	LOG_INF("sQSPI ligma sample initialized");
 	LOG_INF("Use following buttons to interact with external memory through SPI");
 	LOG_INF("Button 1: Erase");
 	LOG_INF("Button 2: Read");
